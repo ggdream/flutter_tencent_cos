@@ -53,6 +53,45 @@ class COSClientBase {
     }
   }
 
+  String getSignX(String method, String key,
+      {Map<String, String?> headers = const {},
+      Map<String, String?> params = const {},
+      DateTime? signTime, required int startTime, required int expiredTime, required String token,}) {
+    if (_config.anonymous) {
+      return "";
+    } else {
+      String keyTime = "$startTime;$expiredTime";
+      cosLog("keyTime=$keyTime");
+      String signKey = hmacSha1(keyTime, _config.secretKey);
+      cosLog("signKey=$signKey");
+
+      var lap = getListAndParameters(params);
+      String urlParamList = lap[0];
+      String httpParameters = lap[1];
+      cosLog("urlParamList=$urlParamList");
+      cosLog("httpParameters=$httpParameters");
+
+      lap = getListAndParameters(filterHeaders(headers));
+      String headerList = lap[0];
+      String httpHeaders = lap[1];
+      cosLog("headerList=$headerList");
+      cosLog("httpHeaders=$httpHeaders");
+
+      String httpString =
+          "${method.toLowerCase()}\n$key\n$httpParameters\n$httpHeaders\n";
+      cosLog("httpString=$httpString");
+      String stringToSign =
+          "sha1\n$keyTime\n${hex.encode(sha1.convert(httpString.codeUnits).bytes)}\n";
+      cosLog("stringToSign=$stringToSign");
+      String signature = hmacSha1(stringToSign, signKey);
+      cosLog("signature=$signature");
+      String res =
+          "q-sign-algorithm=sha1&q-ak=${_config.secretId}&q-sign-time=$keyTime&q-key-time=$keyTime&q-header-list=$headerList&q-url-param-list=$urlParamList&q-signature=$signature&x-cos-security-token=$token";
+      cosLog("Authorization=$res");
+      return res;
+    }
+  }
+
   filterHeaders(Map<String, String?> src) {
     Map<String, String?> res = {};
     const validHeaders = {
@@ -120,6 +159,35 @@ class COSClientBase {
       _headers[name] = values[0];
     });
     var sighn = getSign(method, action, params: params, headers: _headers);
+    req.headers.add("Authorization", sighn);
+    return req;
+  }
+
+    Future<HttpClientRequest> getRequestX(String method, String action,
+      {Map<String, String?> params = const {},
+      Map<String, String?> headers = const {}, required int startTime, required int expiredTime, required String token,}) async {
+    String urlParams =
+        params.keys.toList().map((e) => e + "=" + (params[e] ?? "")).join("&");
+    if (urlParams.isNotEmpty) {
+      urlParams = "?" + urlParams;
+    }
+    HttpClient client = HttpClient();
+
+    if (!action.startsWith("/")) {
+      action = "/" + action;
+    }
+
+    var req = await client.openUrl(
+        method, Uri.parse("${_config.uri}$action$urlParams"));
+
+    headers.forEach((key, value) {
+      req.headers.add(key, value ?? "");
+    });
+    Map<String, String> _headers = {};
+    req.headers.forEach((name, values) {
+      _headers[name] = values[0];
+    });
+    var sighn = getSignX(method, action, params: params, headers: _headers, startTime: startTime, expiredTime: expiredTime, token: token);
     req.headers.add("Authorization", sighn);
     return req;
   }

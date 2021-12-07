@@ -43,6 +43,25 @@ class COSClient extends COSClientBase {
     }
   }
 
+ Future<dynamic> putObjectX(String objectKey, String filePath, { required int startTime, required int expiredTime, required String token,}) async {
+    cosLog("putObject");
+    var f = File(filePath);
+    int flength = await f.length();
+    var fs = f.openRead();
+    var req = await getRequestX("PUT", objectKey, headers: {
+      "content-type": "image/jpeg",
+      "content-length": flength.toString()
+    }, startTime: startTime, expiredTime: expiredTime, token: token);
+    await req.addStream(fs);
+    return await req.close();
+    // cosLog("request-id:" + (response.headers["x-cos-request-id"]?.first ?? ""));
+    // if (response.statusCode != 200) {
+    //   cosLog("putObject error");
+    //   String content = await response.transform(utf8.decoder).join("");
+    //   throw COSException(response.statusCode, content);
+    // }
+  }
+
   deleteObject(String objectKey) async {
     cosLog("deleteObject");
     var response = await getResponse("DELETE", objectKey);
